@@ -2,7 +2,7 @@ import functools
 import itertools as it
 from enum import Enum
 
-__all__ = ['rich_iter', 'StatePolicy']
+__all__ = ['rich_iter', 'magic_iter', 'StatePolicy']
 
 
 _UNDEFINED = object()
@@ -118,3 +118,46 @@ class rich_iter:
     combinations_with_replacement = wrap_itertools_func(
         it.combinations_with_replacement
     )
+
+
+class magic_iter(rich_iter):
+    __slots__ = ()
+
+    def __getitem__(self, index):
+        if isinstance(index, slice):
+            return self.islice(index.start, index.stop, index.step)
+        try:
+            return next(self.islice(index, index + 1))
+        except StopIteration:
+            raise IndexError('index out of range')
+
+    def __add__(self, other):
+        return self.chain(other)
+
+    def __radd__(self, other):
+        return self.__class__(other, self.state_policy).chain(self)
+
+    def __or__(self, func):
+        return self.map(func)
+
+    def __and__(self, predicate):
+        return self.filter(predicate)
+
+    def __xor__(self, predicate):
+        return self.filterfalse(predicate)
+
+    def __rshift__(self, predicate):
+        return self.dropwhile(predicate)
+
+    def __lshift__(self, predicate):
+        return self.takewhile(predicate)
+
+    def __pow__(self, other):
+        return (
+            self.product(repeat=other)
+            if isinstance(other, int)
+            else self.product(other)
+        )
+
+    def __rpow__(self, other):
+        return self.__class__(other, self.state_policy).product(self)

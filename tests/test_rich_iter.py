@@ -4,7 +4,7 @@ import unittest
 from functools import partial
 from itertools import islice
 
-from more_itertools import StatePolicy, rich_iter
+from more_itertools import StatePolicy, magic_iter, rich_iter
 
 is_odd = lambda x: x % 2 == 1
 less_than_3 = lambda x: x < 3
@@ -330,7 +330,97 @@ class RichIterTests(unittest.TestCase):
             self.assertEqual(list(ri2), [])
 
 
+class MagicIterTests(RichIterTests):
+    iter_factory = magic_iter
+
+    def test_get_index(self):
+        for ri in self.rich_iters():
+            self.assertEqual(ri[2], 3)
+        for ri in self.rich_iters():
+            with self.assertRaises(IndexError):
+                ri[6]
+        for ri in self.rich_iters():
+            with self.assertRaises(ValueError):
+                ri[-1]
+
+    def test_get_slice(self):
+        for ri in self.rich_iters():
+            self.assertEqual(list(ri[:]), [1, 2, 3, 4, 5])
+        for ri in self.rich_iters():
+            self.assertEqual(list(ri[:2]), [1, 2])
+        for ri in self.rich_iters():
+            self.assertEqual(list(ri[2:]), [3, 4, 5])
+        for ri in self.rich_iters():
+            self.assertEqual(list(ri[2:4]), [3, 4])
+        for ri in self.rich_iters():
+            self.assertEqual(list(ri[1::2]), [2, 4])
+
+    def test_add(self):
+        for ri in self.rich_iters():
+            self.assertEqual(list(ri + 'DEF'), [1, 2, 3, 4, 5, 'D', 'E', 'F'])
+
+    def test_radd(self):
+        for ri in self.rich_iters():
+            self.assertEqual(list('DEF' + ri), ['D', 'E', 'F', 1, 2, 3, 4, 5])
+
+    def test_or(self):
+        for ri in self.rich_iters():
+            self.assertEqual(list(ri | op.neg), [-1, -2, -3, -4, -5])
+
+    def test_and(self):
+        for ri in self.rich_iters():
+            self.assertEqual(list(ri & is_odd), [1, 3, 5])
+
+    def test_xor(self):
+        for ri in self.rich_iters():
+            self.assertEqual(list(ri ^ is_odd), [2, 4])
+
+    def test_rshift(self):
+        for ri in self.rich_iters():
+            self.assertEqual(list(ri >> less_than_3), [3, 4, 5])
+
+    def test_lshift(self):
+        for ri in self.rich_iters():
+            self.assertEqual(list(ri << less_than_3), [1, 2])
+
+    def test_pow_iterable(self):
+        for ri in self.rich_iters('ABCD'):
+            self.assertEqual(
+                list(ri ** 'xy'),
+                list(map(tuple, 'Ax Ay Bx By ' 'Cx Cy Dx Dy'.split())),
+            )
+
+    def test_rpow_iterable(self):
+        for ri in self.rich_iters('ABCD'):
+            with self.assertRaises(TypeError):
+                3 ** ri
+            self.assertEqual(
+                list('xy' ** ri),
+                list(map(tuple, 'xA xB xC xD ' 'yA yB yC yD'.split())),
+            )
+
+    def test_pow_int(self):
+        for ri in self.rich_iters(range(2)):
+            self.assertEqual(
+                list(ri ** 3),
+                [
+                    (0, 0, 0),
+                    (0, 0, 1),
+                    (0, 1, 0),
+                    (0, 1, 1),
+                    (1, 0, 0),
+                    (1, 0, 1),
+                    (1, 1, 0),
+                    (1, 1, 1),
+                ],
+            )
+
+
 class ShareRichIterTests(RichIterTests):
+    state_policy = 'share'
+
+
+class ShareMagicIterTests(MagicIterTests):
     state_policy = 'share'
 
 
@@ -354,6 +444,11 @@ class CopyRichIterTests(RichIterTests):
             self.assertEqual(list(ri), [1, 2, 3, 4, 5])
             self.assertEqual(list(ri), [])
             self.assertEqual(list(ri2), [-1, -2, -3, -4, -5])
+
+
+class CopyMagicIterTests(CopyRichIterTests, MagicIterTests):
+    iter_factory = magic_iter
+    state_policy = 'copy'
 
 
 class TransferRichIterTests(RichIterTests):
@@ -383,3 +478,8 @@ class TransferRichIterTests(RichIterTests):
             op.methodcaller('peek'),
         ):
             self.assertRaises(RuntimeError, func, iterator)
+
+
+class TransferMagicIterTests(TransferRichIterTests, MagicIterTests):
+    iter_factory = magic_iter
+    state_policy = 'transfer'
