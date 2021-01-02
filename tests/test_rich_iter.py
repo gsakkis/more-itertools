@@ -117,9 +117,22 @@ class RichIterTests(unittest.TestCase):
                 list(ri.chain('DEF')), [1, 2, 3, 4, 5, 'D', 'E', 'F']
             )
 
+        unbounded_chain = rich_iter.chain
+        for ri in self.rich_iters():
+            self.assertEqual(
+                list(unbounded_chain(ri, 'DEF')),
+                [1, 2, 3, 4, 5, 'D', 'E', 'F'],
+            )
+
     def test_chain_from_iterable(self):
         for ri in self.rich_iters(['ABC', ('D', 'E', 'F')]):
             self.assertEqual(list(ri.chain.from_iterable()), list('ABCDEF'))
+
+        unbounded_chain_from_iterable = rich_iter.chain.from_iterable
+        for ri in self.rich_iters(['ABC', ('D', 'E', 'F')]):
+            self.assertEqual(
+                list(unbounded_chain_from_iterable(ri)), list('ABCDEF')
+            )
 
     def test_compress(self):
         for ri in self.rich_iters():

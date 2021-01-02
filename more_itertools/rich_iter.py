@@ -23,6 +23,20 @@ class UnusableIterator:
     del _runtime_error
 
 
+class rich_iter_chain_descriptor:
+
+    __slots__ = ()
+
+    def __get__(self, instance, owner):
+        return rich_iter_chain(instance) if instance is not None else self
+
+    def __call__(self, rich_iterator, *iterables):
+        return rich_iter_chain(rich_iterator)(*iterables)
+
+    def from_iterable(self, rich_iterator):
+        return rich_iter_chain(rich_iterator).from_iterable()
+
+
 class rich_iter_chain:
 
     __slots__ = ("_ri",)
@@ -94,6 +108,8 @@ class rich_iter:
 
         setattr(cls, name, wrapper)
 
+    chain = rich_iter_chain_descriptor()
+
     def tee(self, n=2):
         return tuple(
             self.__class__(iterator, self.state_policy)
@@ -139,8 +155,6 @@ class rich_iter:
             (k, self.__class__(g, self.state_policy))
             for k, g in self._groupby(key)
         )
-
-    chain = property(rich_iter_chain)
 
 
 rich_iter.add_method(it.chain, name="_chain")
