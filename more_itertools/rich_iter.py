@@ -23,57 +23,18 @@ class UnusableIterator:
     del _runtime_error
 
 
-def wrap_as_method(
-    wrapped, *, it_index=0, preserve_cls=True, unusable_it=UnusableIterator()
-):
-    @functools.wraps(
-        wrapped, assigned=('__name__', '__qualname__', '__doc__'), updated=()
-    )
-    def wrapper(self, *args, **kwargs):
-        if self.state_policy is StatePolicy.COPY:
-            self._it, iterator = it.tee(self._it)
-        else:
-            iterator = self._it
-        args = list(args)
-        args.insert(it_index, iterator)
-        new_iterator = wrapped(*args, **kwargs)
-        if self.state_policy is StatePolicy.TRANSFER:
-            self._it = unusable_it
-        if preserve_cls:
-            new_iterator = self.__class__(new_iterator, self.state_policy)
-        return new_iterator
-
-    try:
-        wrapper_parameters = [
-            inspect.Parameter("self", inspect.Parameter.POSITIONAL_ONLY)
-        ]
-        wrapper_parameters.extend(
-            param
-            for i, param in enumerate(
-                inspect.signature(wrapped).parameters.values()
-            )
-            if i != it_index
-        )
-        wrapper.__signature__ = inspect.Signature(wrapper_parameters)
-    except ValueError:
-        pass
-    return wrapper
-
-
 class rich_iter_chain:
 
     __slots__ = ("_ri",)
-    _chain = staticmethod(wrap_as_method(it.chain))
-    _chain_from_iterable = staticmethod(wrap_as_method(it.chain.from_iterable))
 
     def __init__(self, rich_iterator):
         self._ri = rich_iterator
 
     def __call__(self, *iterables):
-        return self._chain(self._ri, *iterables)
+        return self._ri._chain(*iterables)
 
     def from_iterable(self):
-        return self._chain_from_iterable(self._ri)
+        return self._ri._chain_from_iterable()
 
 
 class rich_iter:
@@ -92,6 +53,46 @@ class rich_iter:
     def repeat(cls, obj, times=None, *, state_policy=StatePolicy.SHARE):
         i = it.repeat(obj, times) if times is not None else it.repeat(obj)
         return cls(i, state_policy=state_policy)
+
+    @classmethod
+    def add_method(cls, wrapped, *, name=None, it_index=0, preserve_cls=True):
+        if name is None:
+            name = wrapped.__name__
+
+        def wrapper(self, *args, **kwargs):
+            if self.state_policy is StatePolicy.COPY:
+                self._it, iterator = it.tee(self._it)
+            else:
+                iterator = self._it
+            args = list(args)
+            args.insert(it_index, iterator)
+            new_iterator = wrapped(*args, **kwargs)
+            if self.state_policy is StatePolicy.TRANSFER:
+                self._it = UnusableIterator()
+            if preserve_cls:
+                new_iterator = self.__class__(new_iterator, self.state_policy)
+            return new_iterator
+
+        wrapper.__wrapped__ = wrapped
+        wrapper.__name__ = name
+        wrapper.__qualname__ = f"{cls.__name__}.{name}"
+        wrapper.__doc__ = wrapped.__doc__
+        try:
+            wrapper_parameters = [
+                inspect.Parameter("self", inspect.Parameter.POSITIONAL_ONLY)
+            ]
+            wrapper_parameters.extend(
+                param
+                for i, param in enumerate(
+                    inspect.signature(wrapped).parameters.values()
+                )
+                if i != it_index
+            )
+            wrapper.__signature__ = inspect.Signature(wrapper_parameters)
+        except ValueError:
+            pass
+
+        setattr(cls, name, wrapper)
 
     def tee(self, n=2):
         return tuple(
@@ -133,33 +134,34 @@ class rich_iter:
         self._it, new_it = it.tee(self._it)
         return self.__class__(new_it, self.state_policy)
 
-    # wrapped itertools functions
     def groupby(self, key=None):
         return (
             (k, self.__class__(g, self.state_policy))
             for k, g in self._groupby(key)
         )
 
-    _groupby = wrap_as_method(it.groupby)
-    accumulate = wrap_as_method(it.accumulate)
     chain = property(rich_iter_chain)
-    compress = wrap_as_method(it.compress)
-    cycle = wrap_as_method(it.cycle)
-    dropwhile = wrap_as_method(it.dropwhile, it_index=1)
-    enumerate = wrap_as_method(enumerate)
-    filter = wrap_as_method(filter, it_index=1)
-    filterfalse = wrap_as_method(it.filterfalse, it_index=1)
-    islice = wrap_as_method(it.islice)
-    map = wrap_as_method(map, it_index=1)
-    reduce = wrap_as_method(functools.reduce, it_index=1, preserve_cls=False)
-    starmap = wrap_as_method(it.starmap, it_index=1)
-    sum = wrap_as_method(sum, preserve_cls=False)
-    takewhile = wrap_as_method(it.takewhile, it_index=1)
-    zip = wrap_as_method(zip)
-    zip_longest = wrap_as_method(it.zip_longest)
-    product = wrap_as_method(it.product)
-    permutations = wrap_as_method(it.permutations)
-    combinations = wrap_as_method(it.combinations)
-    combinations_with_replacement = wrap_as_method(
-        it.combinations_with_replacement
-    )
+
+
+rich_iter.add_method(it.chain, name="_chain")
+rich_iter.add_method(it.chain.from_iterable, name="_chain_from_iterable")
+rich_iter.add_method(it.groupby, name="_groupby")
+rich_iter.add_method(it.accumulate)
+rich_iter.add_method(it.compress)
+rich_iter.add_method(it.cycle)
+rich_iter.add_method(it.dropwhile, it_index=1)
+rich_iter.add_method(enumerate)
+rich_iter.add_method(filter, it_index=1)
+rich_iter.add_method(it.filterfalse, it_index=1)
+rich_iter.add_method(it.islice)
+rich_iter.add_method(map, it_index=1)
+rich_iter.add_method(functools.reduce, it_index=1, preserve_cls=False)
+rich_iter.add_method(it.starmap, it_index=1)
+rich_iter.add_method(sum, preserve_cls=False)
+rich_iter.add_method(it.takewhile, it_index=1)
+rich_iter.add_method(zip)
+rich_iter.add_method(it.zip_longest)
+rich_iter.add_method(it.product)
+rich_iter.add_method(it.permutations)
+rich_iter.add_method(it.combinations)
+rich_iter.add_method(it.combinations_with_replacement)
